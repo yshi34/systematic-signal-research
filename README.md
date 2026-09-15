@@ -1,290 +1,589 @@
 # ETF Mean-Reversion & Regime Prediction
 
-A systematic signal research project investigating short-horizon mean reversion, time-series structure, and market regimes in liquid US ETFs using Python.
+A systematic quantitative research project investigating short-horizon mean reversion, time-series dependence, return distributions, and market regimes in liquid US ETFs using Python.
 
-The project follows an end-to-end quantitative research workflow:
+The project follows an end-to-end research workflow:
 
-**data cleaning → feature engineering → statistical testing → predictive modelling → signal construction → out-of-sample backtesting**
+**data cleaning → feature engineering → statistical analysis → predictive modelling → signal construction → out-of-sample backtesting**
 
-The main objective is not simply to maximise predictive accuracy, but to understand whether statistically measurable relationships in ETF returns are stable, economically meaningful, and robust out of sample.
+The objective is not simply to maximise predictive accuracy, but to determine whether apparent patterns in ETF returns are statistically supported, economically meaningful, and robust out of sample.
 
 ---
 
 ## Research Questions
 
-This project focuses on several related questions:
+The project investigates several related questions:
 
 1. Do daily ETF returns exhibit short-term autocorrelation or mean reversion?
-2. Are extreme price deviations followed by statistically significant reversals?
-3. How do return distributions differ from the Gaussian assumption?
-4. Which technical and statistical features contain information about next-day returns?
+2. Are extreme deviations from recent price levels followed by statistically significant reversals?
+3. Are daily ETF returns approximately Gaussian, or do they exhibit skewness and fat tails?
+4. Which features contain measurable information about next-day returns?
 5. Can regression and classification models improve on simple statistical signals?
 6. Does signal performance depend on the prevailing volatility regime?
-7. Do relationships remain profitable after transaction costs and out-of-sample testing?
+7. Do predictive relationships remain useful after transaction costs and out-of-sample testing?
 
 ---
 
 ## Assets
 
-The initial analysis uses liquid US equity ETFs:
+The initial analysis focuses on liquid US equity ETFs:
 
-* SPY — S&P 500
-* QQQ — Nasdaq-100
-* IWM — Russell 2000
+- **SPY** — S&P 500
+- **QQQ** — Nasdaq-100
+- **IWM** — Russell 2000
 
-Additional ETFs can later be introduced for cross-asset and PCA analysis, including:
+The first stage of the project focuses primarily on SPY before extending the analysis across multiple ETFs.
 
-* XLF — Financials
-* XLK — Technology
-* XLE — Energy
+Additional ETFs may later be introduced for PCA and cross-asset analysis:
+
+- XLF — Financials
+- XLK — Technology
+- XLE — Energy
 
 Daily OHLCV data are used over approximately 5–10 years.
 
 ---
 
-## Feature Engineering
+# 1. Data & Feature Engineering
+
+The raw daily ETF data are transformed into a set of predictive and descriptive features.
 
 The initial feature set includes:
 
-* 1-day return
-* 5-day return
-* 20-day return
-* 20-day rolling volatility
-* 20-day moving-average distance
-* 20-day price z-score
-* 20-day volume z-score
-* lagged daily returns
+- 1-day return
+- 5-day return
+- 20-day return
+- 20-day rolling volatility
+- 20-day moving-average distance
+- 20-day price z-score
+- 20-day volume z-score
+- lagged daily returns
 
-For example, the rolling price z-score is defined as
+Daily returns are defined as:
 
-$$
-z_t =
-\frac{P_t-\mu_{20,t}}
-{\sigma_{20,t}}
-$$
+\[
+r_t =
+\frac{P_t}{P_{t-1}} - 1
+\]
 
-where the mean and standard deviation use only information available up to time \(t\).
+Multi-period returns are defined similarly:
 
-This avoids look-ahead bias.
+\[
+r_t^{(k)}
+=
+\frac{P_t}{P_{t-k}} - 1
+\]
 
-The main regression target is
+Rolling annualised volatility is calculated from daily return volatility:
 
-$$
-y_t = r_{t+1}
-$$
-
-and the classification target is
-
-$$
-y_t =
-\mathbf{1}(r_{t+1}>0).
-$$
+\[
+\sigma_{\text{annual}}
+=
+\sigma_{\text{daily}}\sqrt{252}
+\]
 
 ---
 
-## 1. Statistical Analysis — `statsmodels`
+## Rolling Price Z-Score
 
-The first stage studies the time-series properties of ETF returns.
+A central feature in the mean-reversion analysis is the rolling price z-score:
 
-### OLS Regression
+\[
+z_t =
+\frac{P_t-\mu_{20,t}}
+{\sigma_{20,t}}
+\]
 
-Example model:
+where both the rolling mean and rolling standard deviation use only information available up to time \(t\).
 
-$$
+This avoids look-ahead bias.
+
+Interpretation:
+
+```text
+large negative z-score → unusually low relative price
+large positive z-score → unusually high relative price
+```
+
+A simple mean-reversion hypothesis is therefore:
+
+\[
+z_t < -2
+\Rightarrow
+E[r_{t+1}] > 0
+\]
+
+and
+
+\[
+z_t > 2
+\Rightarrow
+E[r_{t+1}] < 0
+\]
+
+---
+
+## Prediction Targets
+
+The regression target is:
+
+\[
+y_t = r_{t+1}
+\]
+
+The classification target is:
+
+\[
+y_t =
+\mathbf{1}(r_{t+1}>0)
+\]
+
+Each observation therefore follows the structure:
+
+\[
+X_t \rightarrow r_{t+1}
+\]
+
+where all features in \(X_t\) are known by time \(t\).
+
+---
+
+# 2. Time-Series Analysis — `statsmodels`
+
+The second stage investigates whether historical ETF returns contain measurable serial structure.
+
+---
+
+## OLS Regression
+
+A baseline autoregressive-style model is:
+
+\[
 r_{t+1}
 =
 \beta_0
 +
-\beta_1 r_t
+\beta_1r_t
 +
-\beta_2 r_{t-1}
+\beta_2r_{t-1}
 +
 \epsilon_{t+1}
-$$
+\]
 
 The analysis focuses on:
 
-* regression coefficients
-* t-statistics
-* p-values
-* confidence intervals
-* \(R^2\)
-* residual diagnostics
+- regression coefficients
+- t-statistics
+- p-values
+- confidence intervals
+- \(R^2\)
+- residual behaviour
 
-Additional regressions test whether variables such as price z-score, recent momentum, volatility, and volume contain information about future returns.
+Additional multivariate regressions introduce features such as:
 
-### Stationarity
+- recent momentum
+- rolling volatility
+- price z-score
+- volume z-score
 
-Augmented Dickey–Fuller tests are applied to:
+The purpose is to distinguish between:
 
-* price levels
-* daily returns
-* moving-average deviations
+```text
+coefficient sign
+```
 
-The purpose is to compare non-stationary price levels with more stationary transformations such as returns and relative price deviations.
-
-### Autocorrelation
-
-ACF and PACF are used to investigate serial dependence in returns.
-
-The project also compares the autocorrelation of
-
-$$
-r_t
-$$
-
-with the autocorrelation of
-
-$$
-r_t^2.
-$$
-
-This helps identify volatility clustering even when raw return autocorrelation is weak.
-
----
-
-## 2. Statistical Testing — `SciPy`
-
-`scipy.stats` is used to investigate return distributions and signal significance.
-
-### Distribution Analysis
-
-Daily ETF returns are evaluated using:
-
-* skewness
-* excess kurtosis
-* Jarque–Bera test
-* normality tests
-* fitted probability distributions
-
-The analysis examines the extent to which empirical ETF returns exhibit fat tails and departures from Gaussian assumptions.
-
-### Mean-Reversion Tests
-
-A simple mean-reversion hypothesis is:
-
-$$
-z_t < -2
-\quad \Rightarrow \quad
-E[r_{t+1}] > 0
-$$
+which describes the estimated direction of a relationship,
 
 and
 
-$$
-z_t > 2
-\quad \Rightarrow \quad
-E[r_{t+1}] < 0.
-$$
+```text
+statistical significance
+```
 
-One-sample t-tests are used to determine whether conditional future returns are statistically different from zero.
-
-### Information Coefficient
-
-Spearman rank correlation is used to measure the monotonic relationship between features and future returns.
-
-Examples include:
-
-* 1-day return vs next-day return
-* 5-day momentum vs next-day return
-* volatility vs next-day return
-* z-score vs next-day return
-
-This provides a simple time-series analogue of a rank-based information coefficient.
+which measures how strongly the data support that relationship.
 
 ---
 
-## 3. Machine Learning — `scikit-learn`
+## Stationarity — Augmented Dickey–Fuller Test
 
-The prediction stage compares traditional statistical models with a standard machine-learning workflow.
+The Augmented Dickey–Fuller test is applied to:
 
-### Regression
+- ETF price levels
+- daily returns
+- moving-average deviations
 
-Models include:
+The null hypothesis is:
 
-* Linear Regression
-* Ridge Regression
-* Lasso Regression
+\[
+H_0:
+\text{the series contains a unit root}
+\]
 
-The target is:
+so a sufficiently small p-value provides evidence against non-stationarity.
 
-$$
+The analysis illustrates the common distinction between:
+
+```text
+price levels → often non-stationary
+returns → typically more stationary
+```
+
+---
+
+## Autocorrelation
+
+The autocorrelation function is used to estimate:
+
+\[
+\rho_k =
+Corr(r_t,r_{t-k})
+\]
+
+for multiple lags.
+
+This helps determine whether returns exhibit:
+
+- short-term continuation
+- short-term reversal
+- little serial dependence
+
+Partial autocorrelation is also examined to separate direct lag relationships from correlations transmitted through intermediate lags.
+
+---
+
+## Return vs Squared-Return Autocorrelation
+
+The project compares the autocorrelation of:
+
+\[
+r_t
+\]
+
+with:
+
+\[
+r_t^2
+\]
+
+Raw returns may exhibit weak autocorrelation even when squared returns show persistent dependence.
+
+This provides an empirical way to study:
+
+\[
+\textbf{volatility clustering}
+\]
+
+where large price movements tend to be followed by other large movements, even if their direction is difficult to predict.
+
+---
+
+## Autoregressive Models
+
+Simple autoregressive models are estimated using:
+
+```python
+from statsmodels.tsa.ar_model import AutoReg
+```
+
+For example:
+
+\[
+r_t =
+c + \phi_1r_{t-1}+\epsilon_t
+\]
+
+The analysis connects autoregression to ordinary regression on lagged values and uses ACF/PACF diagnostics to examine possible lag structure.
+
+---
+
+# 3. Statistical Testing — `SciPy`
+
+The third stage investigates whether observed return patterns are statistically distinguishable from random variation.
+
+---
+
+## Return Distribution
+
+Daily SPY returns are analysed using:
+
+- mean
+- standard deviation
+- skewness
+- excess kurtosis
+- empirical return histograms
+
+The objective is to evaluate how closely the empirical return distribution resembles a Gaussian distribution.
+
+---
+
+## Normality Tests
+
+Two statistical tests are used:
+
+### Jarque–Bera Test
+
+The Jarque–Bera test examines departures from normality using:
+
+- skewness
+- kurtosis
+
+The null hypothesis is:
+
+\[
+H_0:
+\text{returns are consistent with normality}
+\]
+
+---
+
+### D'Agostino Normality Test
+
+The project also uses:
+
+```python
+scipy.stats.normaltest
+```
+
+as an additional test of whether daily returns are consistent with a Gaussian distribution.
+
+These tests are combined with empirical skewness and excess kurtosis to investigate:
+
+\[
+\textbf{fat tails}
+\]
+
+in financial returns.
+
+---
+
+## Mean-Reversion Significance Test
+
+Extreme rolling z-scores are used to define simple conditional samples.
+
+For example:
+
+\[
+z_t < -2
+\]
+
+defines an oversold sample.
+
+The corresponding future returns are:
+
+\[
 r_{t+1}
-$$
+\mid
+z_t<-2
+\]
+
+A one-sample t-test examines:
+
+\[
+H_0:
+E[r_{t+1}\mid z_t<-2]=0
+\]
+
+against a mean-reversion alternative:
+
+\[
+H_1:
+E[r_{t+1}\mid z_t<-2]>0
+\]
+
+Similarly, overbought observations can be tested using:
+
+\[
+z_t>2
+\]
+
+with the alternative:
+
+\[
+E[r_{t+1}\mid z_t>2]<0
+\]
+
+This distinguishes between an observed positive or negative conditional return and evidence that the effect is statistically different from zero.
+
+---
+
+## Statistical vs Economic Significance
+
+A central principle of the project is that:
+
+\[
+\boxed{
+\text{statistical significance}
+\neq
+\text{economic significance}
+}
+\]
+
+A small p-value does not necessarily imply that a trading strategy is profitable.
+
+A statistically detectable signal may still be too small to survive:
+
+- transaction costs
+- bid-ask spreads
+- turnover
+- market impact
+- model instability
+
+Economic significance will therefore be evaluated separately during the backtesting stage.
+
+---
+
+## Spearman Rank Correlation
+
+The relationship between predictive features and next-day returns is also evaluated using Spearman correlation:
+
+\[
+\rho_s =
+Corr(
+Rank(X_t),
+Rank(r_{t+1})
+)
+\]
+
+Candidate features include:
+
+- 1-day return
+- 5-day return
+- 20-day return
+- rolling volatility
+- price z-score
+- volume z-score
+
+Spearman correlation is useful because it measures monotonic rather than strictly linear relationships.
+
+In a broader quantitative research context, rank correlation between a signal and future returns is closely related to the concept of an:
+
+\[
+\textbf{Information Coefficient (IC)}
+\]
+
+---
+
+## Conditional Z-Score Analysis
+
+Z-score observations are grouped into buckets such as:
+
+```text
+z < -2
+-2 ≤ z < -1
+-1 ≤ z < 0
+0 ≤ z < 1
+1 ≤ z < 2
+z > 2
+```
+
+For each group, the analysis compares:
+
+- average next-day return
+- median next-day return
+- volatility
+- sample size
+
+This provides a visual and statistical way to examine whether future returns vary systematically with the degree of price deviation.
+
+---
+
+# 4. Machine Learning Regression
+
+The next stage will use `scikit-learn` to construct predictive models.
+
+Models will include:
+
+- Linear Regression
+- Ridge Regression
+- Lasso Regression
 
 Candidate predictors include:
 
-* recent returns
-* rolling volatility
-* moving-average distance
-* price z-score
-* volume z-score
-* lagged returns
+```text
+ret_1d
+ret_5d
+ret_20d
+vol_20d
+ma_20_dist
+zscore_20d
+volume_zscore_20d
+lagged returns
+```
 
-This section highlights the distinction between:
+The target remains:
 
-**`statsmodels` for statistical inference**
+\[
+r_{t+1}
+\]
+
+This stage will highlight the distinction between:
+
+**`statsmodels` → statistical inference**
 
 and
 
-**`scikit-learn` for predictive modelling and model selection.**
+**`scikit-learn` → prediction, regularisation, model selection and pipelines**
 
 ---
 
-## 4. Classification
+# 5. Classification
 
-The target is converted into a directional variable:
+The next-day target will also be transformed into:
 
-$$
-y_t =
+\[
+y_t=
 \mathbf{1}(r_{t+1}>0)
-$$
+\]
 
-Models include:
+Models will include:
 
-* Logistic Regression
-* Random Forest Classifier
+- Logistic Regression
+- Random Forest Classifier
 
-Evaluation metrics include:
+Evaluation metrics will include:
 
-* accuracy
-* precision
-* ROC-AUC
-* confusion matrix
+- accuracy
+- precision
+- ROC-AUC
+- confusion matrix
 
-Because directional accuracy alone does not determine trading profitability, model outputs are later converted into positions and evaluated through portfolio-level metrics.
+Model performance will be compared against simple baselines rather than against 50% accuracy alone.
 
 ---
 
-## 5. Time-Series Cross-Validation
+# 6. Time-Series Cross-Validation
 
-Random shuffling is avoided.
+Random train/test shuffling will not be used for the financial time series.
 
-Instead, the project uses chronological train, validation, and test periods together with:
+Instead, the project will use chronological splits together with:
 
 ```python
 from sklearn.model_selection import TimeSeriesSplit
 ```
 
-The objective is to prevent future information from leaking into model training.
-
 A typical structure is:
 
 ```text
-Train       → earlier historical period
-Validation  → subsequent period
-Test        → final untouched period
+Train → Validation → Test
 ```
 
-All preprocessing and model fitting are performed using information available at the relevant point in time.
+where the test period remains untouched during model development.
+
+This is designed to prevent:
+
+\[
+\boxed{\text{look-ahead bias}}
+\]
+
+and other forms of information leakage.
 
 ---
 
-## 6. Market Regime Analysis
+# 7. Market Regime Prediction
 
-Market conditions are not assumed to be constant through time.
+Market conditions are not assumed to remain constant through time.
 
-A simple volatility regime can be defined using rolling volatility:
+A basic regime definition will initially focus on rolling volatility:
 
 ```text
 Low-volatility regime
@@ -292,77 +591,105 @@ Normal regime
 High-volatility regime
 ```
 
-The analysis investigates whether mean-reversion signals behave differently across regimes.
+The project will investigate whether mean-reversion signals behave differently across these environments.
 
-A later extension treats regime prediction as a classification problem using variables such as:
+A classification model may then estimate:
 
-* recent volatility
-* recent returns
-* volume
-* cross-ETF behaviour
-* momentum measures
+\[
+P(
+\text{high-volatility regime}_{t+1}
+\mid X_t
+)
+\]
 
-This allows trading signals to depend on both the strength of a mean-reversion signal and the prevailing market environment.
+using information such as:
+
+- recent volatility
+- momentum
+- lagged returns
+- volume
+- cross-ETF behaviour
+
+The objective is to investigate whether trading signals should depend both on:
+
+```text
+signal strength
+```
+
+and:
+
+```text
+market regime
+```
 
 ---
 
-## 7. PCA Across ETFs
+# 8. PCA Across ETFs
 
-Principal Component Analysis is applied to returns from multiple ETFs.
+Principal Component Analysis will be applied to returns across several ETFs using:
 
 ```python
 from sklearn.decomposition import PCA
 ```
 
-The analysis investigates whether a small number of latent factors explain a substantial fraction of cross-ETF return variation.
+The analysis will study whether a small number of latent factors explain a substantial fraction of cross-ETF variation.
 
-The first principal component is interpreted as a candidate broad market mode where supported by the empirical loadings.
+The first principal component will be examined as a potential broad market factor, subject to the empirical factor loadings.
 
 ---
 
-## 8. Backtesting
+# 9. Backtesting
 
-Model predictions and statistical signals are converted into trading positions.
+Statistical signals and machine-learning predictions will ultimately be converted into trading positions.
 
 A basic backtest follows:
 
 ```python
 position = signal.shift(1)
-strategy_return = position * market_return
+
+strategy_return = (
+    position * market_return
+)
 ```
 
-The lag ensures that a signal computed at time \(t\) is not applied to a return that has already occurred.
+The lag ensures that a signal computed using information at time \(t\) is only applied to future returns.
 
-Performance metrics include:
+Performance metrics will include:
 
-* cumulative return
-* annualised return
-* annualised volatility
-* Sharpe ratio
-* maximum drawdown
-* turnover
+- cumulative return
+- annualised return
+- annualised volatility
+- Sharpe ratio
+- maximum drawdown
+- turnover
 
-Transaction costs are incorporated using:
+Transaction costs will also be included:
 
 ```python
-transaction_cost = turnover * cost_per_trade
+transaction_cost = (
+    turnover * cost_per_trade
+)
 ```
-
-The final comparison will evaluate:
-
-| Model / Signal         | Sharpe | Annualised Return | Max Drawdown | Turnover |
-| ---------------------- | -----: | ----------------: | -----------: | -------: |
-| Z-score Mean Reversion |    TBD |               TBD |          TBD |      TBD |
-| OLS                    |    TBD |               TBD |          TBD |      TBD |
-| Ridge                  |    TBD |               TBD |          TBD |      TBD |
-| Logistic Regression    |    TBD |               TBD |          TBD |      TBD |
-| Random Forest          |    TBD |               TBD |          TBD |      TBD |
-
-Results will be populated only after the out-of-sample analysis is completed.
 
 ---
 
-## Repository Structure
+## Final Model Comparison
+
+The final project will compare several signals and models:
+
+| Model / Signal | Sharpe | Annualised Return | Max Drawdown | Turnover |
+|---|---:|---:|---:|---:|
+| Z-Score Mean Reversion | TBD | TBD | TBD | TBD |
+| OLS | TBD | TBD | TBD | TBD |
+| Ridge | TBD | TBD | TBD | TBD |
+| Logistic Regression | TBD | TBD | TBD | TBD |
+| Random Forest | TBD | TBD | TBD | TBD |
+
+Only out-of-sample results will be used for the final comparison.
+
+---
+
+# Repository Structure
 
 ```text
 systematic-signal-research/
@@ -390,9 +717,7 @@ systematic-signal-research/
 
 ---
 
-## Python Stack
-
-The project uses:
+# Python Stack
 
 ```text
 Python
@@ -407,48 +732,94 @@ yfinance
 
 ---
 
-## Research Principles
+# Research Principles
 
-The project follows several basic principles of quantitative research:
+The project follows several principles intended to reduce common quantitative research errors:
 
-* Do not use future information when constructing features.
-* Do not randomly shuffle financial time-series observations.
-* Separate statistical significance from economic significance.
-* Compare models against simple baselines.
-* Evaluate signals out of sample.
-* Include transaction costs.
-* Avoid tuning strategies repeatedly on the final test set.
-* Treat unusually strong predictive results as a reason to check for data leakage.
-
----
-
-## Project Status
-
-Work in progress.
-
-Completed:
-
-* Data collection and cleaning
-* Return and rolling-feature construction
-* Lagged-feature construction
-* Initial mean-reversion signal definition
-* OLS and time-series diagnostics
-
-In progress:
-
-* Statistical hypothesis testing
-* Machine-learning models
-* Time-series cross-validation
-* Regime analysis
-* PCA
-* Out-of-sample backtesting
+- Use only information available at the prediction time when constructing features.
+- Avoid random shuffling of financial time-series observations.
+- Separate statistical significance from economic significance.
+- Compare predictive models against simple baselines.
+- Keep an untouched out-of-sample test period.
+- Include transaction costs in strategy evaluation.
+- Avoid repeated parameter optimisation on the final test set.
+- Treat unexpectedly strong predictive performance as a reason to check for leakage.
+- Distinguish exploratory analysis from confirmatory statistical testing.
+- Avoid selecting thresholds solely because they produce attractive in-sample p-values or Sharpe ratios.
 
 ---
 
-## Final Deliverable
+# Project Status
 
-The completed project will summarise the research as:
+### Completed
 
-**Research question → Data → Features → Statistical tests → Models → Out-of-sample results → Limitations**
+- [x] ETF data collection and cleaning
+- [x] Daily and multi-period return construction
+- [x] Rolling volatility features
+- [x] Moving-average distance
+- [x] Rolling price and volume z-scores
+- [x] Lagged-return features
+- [x] Regression and classification target construction
+- [x] OLS regression with `statsmodels`
+- [x] Coefficient, t-statistic, p-value and confidence-interval interpretation
+- [x] Residual analysis
+- [x] Augmented Dickey–Fuller stationarity testing
+- [x] ACF and PACF analysis
+- [x] Return and squared-return autocorrelation comparison
+- [x] Basic autoregressive modelling
+- [x] Return skewness and kurtosis analysis
+- [x] Jarque–Bera normality testing
+- [x] Additional normality testing with SciPy
+- [x] Mean-reversion t-tests
+- [x] Spearman rank correlation / signal IC analysis
+- [x] Conditional z-score bucket analysis
+
+### In Progress
+
+- [ ] Linear Regression with `scikit-learn`
+- [ ] Ridge and Lasso regularisation
+- [ ] Feature scaling and ML pipelines
+- [ ] Logistic Regression
+- [ ] Random Forest classification
+- [ ] Time-series cross-validation
+- [ ] Market regime prediction
+- [ ] PCA across ETFs
+- [ ] Out-of-sample backtesting
+- [ ] Transaction-cost modelling
+- [ ] Final model comparison
+
+---
+
+# Current Research Workflow
+
+The project currently follows:
+
+\[
+\boxed{
+\text{Data}
+\rightarrow
+\text{Features}
+\rightarrow
+\text{Time-Series Diagnostics}
+\rightarrow
+\text{Statistical Tests}
+\rightarrow
+\text{Machine Learning}
+\rightarrow
+\text{Backtest}
+}
+\]
+
+The first three stages are now complete.
+
+The next stage focuses on building predictive regression models using `scikit-learn` and evaluating whether regularisation improves out-of-sample performance.
+
+---
+
+# Final Deliverable
+
+The completed project will present the research in the following structure:
+
+**Research question → Data → Features → Statistical evidence → Predictive models → Out-of-sample results → Economic performance → Limitations**
 
 The goal is to evaluate whether simple ETF signals exhibit reproducible predictive structure rather than to optimise an in-sample trading strategy.
